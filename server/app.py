@@ -1,71 +1,52 @@
 from flask import Flask, request, make_response, jsonify
 from flask_cors import CORS
 from flask_migrate import Migrate
-
-from models import db, Message
+from flask_sqlalchemy import SQLAlchemy
 
 app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///app.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.json.compact = False
-
-CORS(app)
+db = SQLAlchemy(app)
 migrate = Migrate(app, db)
+CORS(app)
 
-db.init_app(app)
+# Assuming your Message model is defined in models.py
+from models import Message
 
 @app.route('/messages', methods=['GET', 'POST'])
 def messages():
     if request.method == 'GET':
-        messages = Message.query.order_by('created_at').all()
+        messages = Message.query.order_by(Message.created_at).all()
+        response = make_response(jsonify([message.to_dict() for message in messages]), 200)
 
-        response = make_response(
-            jsonify([message.to_dict() for message in messages]),
-            200,
-        )
-    
     elif request.method == 'POST':
         data = request.get_json()
-        message = Message(
-            body=data['body'],
-            username=data['username']
-        )
-
+        message = Message(body=data['body'], username=data['username'])
         db.session.add(message)
         db.session.commit()
-
-        response = make_response(
-            jsonify(message.to_dict()),
-            201,
-        )
+        response = make_response(jsonify(message.to_dict()), 201)
 
     return response
 
 @app.route('/messages/<int:id>', methods=['PATCH', 'DELETE'])
 def messages_by_id(id):
-    message = Message.query.filter_by(id=id).first()
+    message = Message.query.get(id)
+
+    if not message:
+        return jsonify({"error": "Message not found"}), 404
 
     if request.method == 'PATCH':
         data = request.get_json()
         for attr in data:
             setattr(message, attr, data[attr])
-            
-        db.session.add(message)
         db.session.commit()
-
-        response = make_response(
-            jsonify(message.to_dict()),
-            200,
-        )
+        response = make_response(jsonify(message.to_dict()), 200)
 
     elif request.method == 'DELETE':
         db.session.delete(message)
         db.session.commit()
-
-        response = make_response(
-            jsonify({'deleted': True}),
-            200,
-        )
+        response = make_response(jsonify({'deleted': True}), 200)
 
     return response
 
